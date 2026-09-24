@@ -1,0 +1,103 @@
+local agentIDs = { {AGENT_IDS} }
+local sightDists = { {SIGHT_DISTS} }
+
+-- Hi! Welcome to my code.
+-- If you want in-game error output from this, create an object with TMPro text called ErrorText.
+
+local PatrolPoints = {}
+local searchedPatrolPoints = false
+
+local hasErrored, eventError
+local ErrorText = GameObject.findGameObject("ErrorText")
+
+local agents = {}
+local currentDests = {}
+
+function onEvent(tag, data)
+	local _, err = pcall(function()
+		-- If you need to use onEvent, put your code in here.
+	end)
+
+	if err then
+		eventError = err
+	end
+end
+
+function tick(dt)
+	if hasErrored then
+		return
+	end
+
+	local _, err = pcall(function()
+		if LocalPlayer ~= nil then
+			if not searchedPatrolPoints then -- Get all of the patrol points
+				searchedPatrolPoints = true
+				for i, agentID in pairs(agentIDs) do
+					local pointTable = {}
+					local searching = true
+					local pointIndex = 0
+					while searching do
+						pointIndex += 1
+						local pointObj = GameObject.findGameObject("LuauAgent" .. agentID .. "Point" .. pointIndex) -- This is why its important you name stuff correctly!
+						if pointObj ~= nil then
+							table.insert(pointTable, pointObj)
+						else
+							searching = false
+						end
+					end
+					table.insert(PatrolPoints, pointTable)
+				end
+			end
+
+			if #agents ~= #agentIDs then -- Here we actually find the agents from their ids
+				for i, agentID in pairs(agentIDs) do
+					local foundAgent = AIAgent.findPrePlacedAIAgentByID(agentID)
+					if foundAgent ~= nil then
+						agents[i] = foundAgent
+					end
+				end
+			end
+
+			if LocalPlayer.isEntityAuthority then
+				for i, agent in pairs(agents) do
+					if agent ~= nil then
+						local minDist = math.huge
+						local closestPlr = nil
+						for k, plr in pairs(Players) do
+							local dist = Vec3.distance(agent.agentPosition, plr.bodyPosition)
+							if dist < minDist then
+								minDist = dist
+								closestPlr = plr
+							end
+						end
+						local chaseDist = sightDists[i]
+						if chaseDist == nil then
+							chaseDist = 8
+						end
+						if minDist <= chaseDist then
+							agent:setDestination(closestPlr.bodyPosition) -- ty another axiom for networking this
+							currentDests[i] = nil
+						elseif currentDests[i] == nil or Vec3.distance(currentDests[i].position, agent.agentPosition) < 1 then
+							local group = PatrolPoints[i]
+							if group ~= nil and #group > 0 then
+								local newPoint = group[math.random(1, #group)]
+								currentDests[i] = newPoint
+								agent:setDestination(newPoint.position)
+							end
+						end
+					end
+				end
+			end
+		end
+	end)
+
+	if err or eventError then
+		hasErrored = true
+		if not eventError then
+			eventError = err
+		end
+		if ErrorText ~= nil then
+			ErrorText:setText(tostring(eventError))
+		end
+	end
+end
